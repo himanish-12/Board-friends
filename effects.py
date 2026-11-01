@@ -2,6 +2,7 @@
 import pygame
 import math
 import random
+from font_renderer import get_font
 
 
 class Particle:
@@ -35,17 +36,17 @@ class Particle:
 
 
 class FloatingText:
-    def __init__(self, x, y, text, color, size=24):
+    def __init__(self, x, y, text, color, size=22):
         self.x = x
         self.y = y
         self.text = text
         self.color = color
-        self.life = 55
-        self.max_life = 55
-        self.font = pygame.font.SysFont("Segoe UI", size, bold=True)
+        self.life = 60
+        self.max_life = 60
+        self.font = get_font("Segoe UI", size, bold=True)
 
     def update(self):
-        self.y -= 1.2
+        self.y -= 1.1
         self.life -= 1
 
     def draw(self, surface):

@@ -135,4 +135,8 @@ class CarromBoard:
 
     def draw_active_baseline(self, screen, turn, min_x, max_x, shake_offset=(0, 0)):
         by = int(self.get_baseline_y(turn) + shake_offset[1])
+        # Outer glow
+        glow_surf = pygame.Surface((int(max_x - min_x + 20), 16), pygame.SRCALPHA)
+        pygame.draw.line(glow_surf, (*GOLD, 70), (10, 8), (int(max_x - min_x + 10), 8), 8)
+        screen.blit(glow_surf, (int(min_x - 10), by - 8))
         pygame.draw.line(screen, GOLD, (int(min_x), by), (int(max_x), by), 3)

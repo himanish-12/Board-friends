@@ -39,7 +39,7 @@ from ui import GameUI
 
 class CarromGame:
     def __init__(self):
-        pygame.init()
+        pygame.display.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Carrom Master - 2D Physics Edition")
         self.clock = pygame.time.Clock()
@@ -89,6 +89,10 @@ class CarromGame:
         self.pocketed_this_turn = []
         self.winner_text = ""
 
+        # Smooth aiming & placement interpolation coordinates
+        self.aim_pos = [float(CENTER_X), float(CENTER_Y)]
+        self.striker_target_x = float(CENTER_X)
+
         self.setup_striker_for_turn()
 
     def setup_striker_for_turn(self):
@@ -96,7 +100,8 @@ class CarromGame:
         self.striker_min_x = CENTER_X - span
         self.striker_max_x = CENTER_X + span
         self.striker.y = self.board.get_baseline_y(self.turn)
-        self.striker.x = CENTER_X
+        self.striker.x = float(CENTER_X)
+        self.striker_target_x = float(CENTER_X)
         self.striker.vx = 0.0
         self.striker.vy = 0.0
         self.striker.scale = 1.0
@@ -107,10 +112,12 @@ class CarromGame:
         if not self.is_striker_pos_valid(self.striker.x, self.striker.y):
             for offset in range(10, int(span), 8):
                 if self.is_striker_pos_valid(CENTER_X + offset, self.striker.y):
-                    self.striker.x = CENTER_X + offset
+                    self.striker.x = float(CENTER_X + offset)
+                    self.striker_target_x = self.striker.x
                     break
                 if self.is_striker_pos_valid(CENTER_X - offset, self.striker.y):
-                    self.striker.x = CENTER_X - offset
+                    self.striker.x = float(CENTER_X - offset)
+                    self.striker_target_x = self.striker.x
                     break
 
         self.state = "PLACE_STRIKER"
@@ -118,7 +125,7 @@ class CarromGame:
 
     def is_striker_pos_valid(self, x, y):
         for c in self.coins:
-            if math.hypot(c.x - x, c.y - y) < (STRIKER_RADIUS + c.radius + 2):
+            if not c.pocketing and math.hypot(c.x - x, c.y - y) < (STRIKER_RADIUS + c.radius + 2):
                 return False
         return True
 
@@ -128,15 +135,19 @@ class CarromGame:
             if disc_type == "white"
             else (BLACK_COIN if disc_type == "black" else QUEEN_COIN)
         )
-        for dist in range(0, 200, 6):
-            for deg in range(0, 360, 30):
+        for dist in range(0, 220, 6):
+            for deg in range(0, 360, 20):
                 rad = math.radians(deg)
                 tx = CENTER_X + math.cos(rad) * dist
                 ty = CENTER_Y + math.sin(rad) * dist
-                if all(math.hypot(c.x - tx, c.y - ty) >= COIN_RADIUS * 2 + 2 for c in self.coins):
+                if all(
+                    math.hypot(c.x - tx, c.y - ty) >= COIN_RADIUS * 2 + 2
+                    for c in self.coins
+                    if not c.pocketing
+                ):
                     new_coin = Disc(tx, ty, COIN_RADIUS, 1.0, color, disc_type)
                     self.coins.append(new_coin)
-                    self.shockwaves.append(Shockwave(tx, ty, GOLD, 38))
+                    self.shockwaves.append(Shockwave(tx, ty, GOLD, 42))
                     return
 
     # ------------------------------------------------------------------------
@@ -147,17 +158,19 @@ class CarromGame:
             [self.striker] if not self.striker.pocketing or self.striker.scale > 0 else []
         )
 
-        # Animate pocketing discs
+        # Animate pocketing discs shrinking into the pocket
         for d in list(all_discs):
             if d.pocketing:
                 px, py = d.pocket_target
-                d.x += (px - d.x) * 0.25
-                d.y += (py - d.y) * 0.25
-                d.scale -= 0.08
+                d.x += (px - d.x) * 0.28
+                d.y += (py - d.y) * 0.28
+                d.scale -= 0.09
                 if d.scale <= 0.05:
                     if d in self.coins:
                         self.coins.remove(d)
                     d.scale = 0.0
+                    # Crucial fix: clear pocketing flag on Striker so is_moving becomes False!
+                    d.pocketing = False
 
         active_discs = [d for d in self.coins if not d.pocketing]
         if not self.striker.pocketing and self.striker.scale > 0:
@@ -274,17 +287,17 @@ class CarromGame:
 
         if disc.disc_type == "striker":
             self.screen_shake = 10
-            self.float_texts.append(FloatingText(px, py, "FOUL! -1", RED_ACCENT, 26))
+            self.float_texts.append(FloatingText(px, py, "STRIKER FOUL! -1", RED_ACCENT, 22))
         elif disc.disc_type == "queen":
             self.screen_shake = 8
-            self.float_texts.append(FloatingText(px, py, "QUEEN!", QUEEN_COIN, 28))
+            self.float_texts.append(FloatingText(px, py, "QUEEN!", QUEEN_COIN, 24))
         else:
             label = "WHITE +1" if disc.disc_type == "white" else "BLACK +1"
             is_own = (self.turn == 0 and disc.disc_type == "white") or (
                 self.turn == 1 and disc.disc_type == "black"
             )
             col = GOLD if is_own else (180, 180, 195)
-            self.float_texts.append(FloatingText(px, py, label, col, 22))
+            self.float_texts.append(FloatingText(px, py, label, col, 20))
 
     # ------------------------------------------------------------------------
     # TURN RULES & SCORING
@@ -310,14 +323,14 @@ class CarromGame:
                 self.queen_holder = None
                 self.scores[self.turn] += 3
                 self.float_texts.append(
-                    FloatingText(CENTER_X, CENTER_Y, "QUEEN COVERED! +3", GOLD, 30)
+                    FloatingText(CENTER_X, CENTER_Y, "QUEEN COVERED! +3", GOLD, 26)
                 )
                 keep_turn = True
             else:
                 self.queen_holder = None
                 self.spawn_coin_near_center("queen")
                 self.float_texts.append(
-                    FloatingText(CENTER_X, CENTER_Y, "QUEEN RETURNED", QUEEN_COIN, 24)
+                    FloatingText(CENTER_X, CENTER_Y, "QUEEN RETURNED", QUEEN_COIN, 22)
                 )
 
         # Check Queen pocketed on this shot
@@ -325,30 +338,35 @@ class CarromGame:
             if foul:
                 self.spawn_coin_near_center("queen")
                 self.float_texts.append(
-                    FloatingText(CENTER_X, CENTER_Y, "FOUL! QUEEN RETURNED", RED_ACCENT, 24)
+                    FloatingText(CENTER_X, CENTER_Y, "FOUL! QUEEN RETURNED", RED_ACCENT, 22)
                 )
             elif my_pocketed > 0:
                 self.queen_covered_by = self.turn
                 self.scores[self.turn] += 3
                 self.float_texts.append(
-                    FloatingText(CENTER_X, CENTER_Y, "QUEEN COVERED! +3", GOLD, 30)
+                    FloatingText(CENTER_X, CENTER_Y, "QUEEN COVERED! +3", GOLD, 26)
                 )
                 keep_turn = True
             else:
                 self.queen_holder = self.turn
                 self.float_texts.append(
-                    FloatingText(CENTER_X, CENTER_Y, "COVER THE QUEEN!", GOLD, 26)
+                    FloatingText(CENTER_X, CENTER_Y, "COVER THE QUEEN!", GOLD, 24)
                 )
                 keep_turn = True
 
         if my_pocketed > 0 and not foul:
             keep_turn = True
 
+        # Striker Foul Penalty: Deduct 1 point, return player's coin to center, pass turn
         if foul:
             keep_turn = False
-            if self.scores[self.turn] > 0:
-                self.scores[self.turn] -= 1
+            self.scores[self.turn] -= 1
+            my_coins_on_board = sum(1 for c in self.coins if c.disc_type == my_type)
+            if my_coins_on_board < 9:
                 self.spawn_coin_near_center(my_type)
+                self.float_texts.append(
+                    FloatingText(CENTER_X, CENTER_Y + 28, f"{my_type.upper()} COIN RETURNED", RED_ACCENT, 20)
+                )
 
         # Check Match Over
         white_left = sum(1 for c in self.coins if c.disc_type == "white")
@@ -385,20 +403,17 @@ class CarromGame:
                 self.reset_game()
 
             if self.state == "PLACE_STRIKER":
-                if event.type == pygame.MOUSEMOTION:
-                    target_x = max(self.striker_min_x, min(self.striker_max_x, mouse_pos[0]))
-                    if self.is_striker_pos_valid(target_x, self.striker.y):
-                        self.striker.x = target_x
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if self.is_striker_pos_valid(self.striker.x, self.striker.y):
                         self.state = "AIMING"
+                        self.aim_pos = [float(mouse_pos[0]), float(mouse_pos[1])]
 
             elif self.state == "AIMING":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                     self.state = "PLACE_STRIKER"
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                    dx = self.striker.x - mouse_pos[0]
-                    dy = self.striker.y - mouse_pos[1]
+                    dx = self.striker.x - self.aim_pos[0]
+                    dy = self.striker.y - self.aim_pos[1]
                     dist = math.hypot(dx, dy)
                     if dist > 10:
                         power = min(MAX_POWER, (dist / 200.0) * MAX_POWER)
@@ -408,10 +423,26 @@ class CarromGame:
                     else:
                         self.state = "PLACE_STRIKER"
 
+    def update_smooth_controls(self, mouse_pos):
+        if self.state == "PLACE_STRIKER":
+            clamped_x = max(self.striker_min_x, min(self.striker_max_x, float(mouse_pos[0])))
+            if self.is_striker_pos_valid(clamped_x, self.striker.y):
+                self.striker_target_x = clamped_x
+            # Smoothly interpolate striker along baseline
+            next_x = self.striker.x + (self.striker_target_x - self.striker.x) * 0.45
+            if self.is_striker_pos_valid(next_x, self.striker.y):
+                self.striker.x = next_x
+
+        elif self.state == "AIMING":
+            # Exponential smoothing (lerp) eliminates mouse jitter
+            self.aim_pos[0] += (mouse_pos[0] - self.aim_pos[0]) * 0.35
+            self.aim_pos[1] += (mouse_pos[1] - self.aim_pos[1]) * 0.35
+
     def run(self):
         while True:
             mouse_pos = pygame.mouse.get_pos()
             self.handle_events(mouse_pos)
+            self.update_smooth_controls(mouse_pos)
 
             if self.state == "SIMULATING":
                 self.update_physics()
@@ -450,14 +481,14 @@ class CarromGame:
                 self.striker.draw(self.screen, shake_offset)
 
             if self.state == "AIMING":
-                self.ui.draw_aim_guide(self.screen, self.striker, self.coins, mouse_pos)
+                self.ui.draw_aim_guide(self.screen, self.striker, self.coins, self.aim_pos)
 
             for p in self.particles:
                 p.draw(self.screen)
             for ft in self.float_texts:
                 ft.draw(self.screen)
 
-            self.ui.draw_hud(self.screen, self, mouse_pos)
+            self.ui.draw_hud(self.screen, self, self.aim_pos)
 
             if self.state == "GAME_OVER":
                 self.ui.draw_game_over(self.screen, self.winner_text)
