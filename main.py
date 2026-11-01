@@ -1,6 +1,6 @@
 # main.py
-from game import CarromGame
+from match import CarromMatch
 
 if __name__ == "__main__":
-    game = CarromGame()
-    game.run()
+    match = CarromMatch()
+    match.run()
