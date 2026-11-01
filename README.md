@@ -35,5 +35,9 @@ TO change physics go to settings.py and change values like
 BOARD_DRAG = 0.986        # Closer to 1.0 = slicker, freshly powdered board
 COIN_BOUNCE = 0.88        # Elasticity between colliding coins
 CUSHION_BOUNCE = 0.80     # Rebound speed off the wooden frame
+```
+#playable link from itch.io
+[Link text](https://himanish-12.itch.io/board-friends)
+
 MAX_STRIKE_POWER = 32.0   # Top speed of a full-power break shot
 ```
